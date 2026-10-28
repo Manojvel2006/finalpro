@@ -1,0 +1,6 @@
+{
+  "name": "RepSense",
+  "description": "Smart workout tracker with BLE sensor integration, real-time rep counting, form correction, and vitals monitoring.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

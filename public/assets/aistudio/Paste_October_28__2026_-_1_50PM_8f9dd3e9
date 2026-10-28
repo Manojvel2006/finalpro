@@ -1,0 +1,725 @@
+# Full Prompt: Integrate ESP32 Smart Fitness Band with Existing RepSense Mobile App, Including Real-Time Gyroscope and Arm-Angle Monitoring
+
+## Project Objective
+
+Integrate my physical smart fitness band hardware with the existing RepSense application located at `D:/repsense_proj`.
+
+The system is designed for real-time bicep curl recognition, repetition counting, exercise-form monitoring, gyroscope and arm-angle measurement, heart-rate and SpO₂ monitoring, vibration alerts, and personalized mobile workout guidance.
+
+**Critical requirement:** This is an existing software project. Do not create a new application, replace the current architecture, or remove existing features. Inspect the repository first, understand its current implementation, and make the smallest safe changes necessary.
+
+Implement the integration incrementally, test each change, and clearly distinguish completed software work from hardware functionality that still requires physical testing.
+
+## 1. Existing Software Architecture
+
+The repository contains:
+
+- `mobile/`: React Native/Expo mobile application.
+- `backend/`: Express and TypeScript REST API.
+- `RepSenseTemplate/`: Separate starter project; do not modify it unless explicitly required.
+
+Existing mobile screens include:
+
+- `HomeScreen.tsx`
+- `ConnectDeviceScreen.tsx`
+- `WorkoutScreen.tsx`
+- `LiveWorkoutScreen.tsx`
+- `WorkoutDetailScreen.tsx`
+- `WorkoutSummaryScreen.tsx`
+- `HistoryScreen.tsx`
+- `AnalyticsScreen.tsx`
+- `ProfileScreen.tsx`
+- `OfflineQueueScreen.tsx`
+
+Existing services and state management include:
+
+- `BleManager.ts`
+- `BleServiceInterface.ts`
+- `MockBleService.ts`
+- `services/ble/index.ts`
+- `deviceStore.ts`
+- `workoutStore.ts`
+- `services/api/index.ts`
+- `OfflineQueueService.ts`
+- `NotificationService.ts`
+- `authStore.ts`
+
+The backend contains authentication, workout, exercise, and analytics routes, controllers, services, and data models.
+
+Verify all paths, exports, dependencies, data structures, and existing behaviors directly from the repository. These filenames are initial references and must be verified before use.
+
+## 2. Hardware Components
+
+Integrate the following hardware components.
+
+### 2.1 ESP32 microcontroller
+
+The ESP32 is responsible for:
+
+- Reading data from both MPU6050 sensors.
+- Reading MAX30102 heart-rate and SpO₂ measurements.
+- Processing accelerometer and gyroscope data.
+- Estimating sensor orientation and relative elbow angle.
+- Detecting bicep curl repetitions, if implemented in firmware.
+- Classifying supported exercise-form errors.
+- Controlling the vibration motor through an appropriate driver.
+- Communicating with the mobile app using Bluetooth Low Energy (BLE).
+
+### 2.2 Two MPU6050 IMU sensors
+
+Use two MPU6050 sensors:
+
+- **Upper-arm sensor:** Mounted securely on the upper arm.
+- **Forearm sensor:** Mounted securely on the forearm.
+
+Each MPU6050 provides:
+
+- Accelerometer X, Y, and Z values.
+- Gyroscope X, Y, and Z angular velocity values.
+
+Gyroscope values must be represented in degrees per second (°/s) after conversion from raw sensor units.
+
+The system should estimate:
+
+- Upper-arm orientation.
+- Forearm orientation.
+- Relative elbow angle.
+- Elbow flexion and extension throughout a bicep curl.
+- Angular velocity during the movement.
+- Peak flexion angle and range of motion, when calculated reliably.
+
+### 2.3 MAX30102 sensor
+
+Read and display:
+
+- Heart rate in beats per minute (BPM).
+- Estimated SpO₂ in percent.
+- Sensor signal quality and measurement validity, when available.
+
+Invalid, stale, or unreliable measurements must be shown as unavailable rather than presented as genuine readings.
+
+### 2.4 Vibration motor
+
+Use a suitable driver circuit to operate the vibration motor from the ESP32.
+
+Support vibration alerts for configured events, such as:
+
+- Incorrect exercise form.
+- Incomplete range of motion.
+- Excessive upper-arm movement.
+- Configured threshold warnings.
+- Sensor calibration or connection issues, if supported.
+
+Avoid repeated or continuous vibration caused by processing every incoming sensor packet.
+
+### 2.5 Smartphone and Bluetooth headphones
+
+The smartphone should display live measurements, exercise progress, feedback, workout history, and session summaries.
+
+Use mobile-generated voice guidance through the phone's supported text-to-speech or audio functionality. BLE sensor communication does not itself provide Bluetooth headphone audio; do not claim headphone audio is implemented unless the required audio mechanism exists.
+
+## 3. Repository Inspection and Implementation Plan
+
+Before modifying files:
+
+1. Inspect the existing BLE service interface and all implementations.
+2. Review device and workout stores.
+3. Trace data flow through `ConnectDeviceScreen.tsx` and `LiveWorkoutScreen.tsx`.
+4. Inspect workout start, pause, resume, and finish behavior.
+5. Review workout summary, history, and analytics calculations.
+6. Inspect backend workout and exercise schemas, routes, controllers, services, and validation.
+7. Review offline queue and notification implementations.
+8. Check Expo configuration, native Android configuration, dependencies, and BLE library compatibility.
+9. Identify any existing sensor protocol, BLE UUIDs, mock data, and firmware assumptions.
+10. Identify features that are implemented, mocked, incomplete, or absent.
+
+First provide a concise implementation plan listing the files that need changes. Then proceed with implementation without unnecessarily duplicating existing functionality.
+
+Do not stop at a plan unless a critical missing requirement prevents safe implementation.
+
+## 4. Bluetooth Low Energy Integration
+
+Integrate the ESP32 using the existing BLE architecture.
+
+The app must support, where compatible with the current BLE library:
+
+- Requesting the necessary Bluetooth permissions.
+- Scanning for the ESP32.
+- Identifying the device using a configured service UUID or device identifier.
+- Connecting and disconnecting.
+- Discovering GATT services and characteristics.
+- Receiving real-time sensor notifications.
+- Sending supported configuration commands.
+- Detecting disconnection.
+- Safely reconnecting when appropriate.
+- Tracking connection status and last received data time.
+- Cleaning up subscriptions and device resources.
+
+Use the existing `BleServiceInterface` wherever possible. Extend it only when necessary, and update both the real BLE service and `MockBleService`.
+
+Do not invent BLE UUIDs. Store UUIDs in a suitable configuration module and document the values that must match the ESP32 firmware.
+
+Inspect the Expo setup before selecting or changing BLE dependencies. If a development build, native module, Android permission change, or other native configuration is necessary, implement or document the required steps accurately.
+
+Handle BLE failures gracefully without crashing the app.
+
+## 5. Gyroscope Values and Angle Calculation
+
+This is a core requirement.
+
+Implement the full data flow for raw or processed gyroscope values and estimated angles, from the ESP32 firmware protocol through the mobile app UI.
+
+### 5.1 Gyroscope angular velocity
+
+For the upper-arm MPU6050, support:
+
+- `upperArmGyroX` — °/s.
+- `upperArmGyroY` — °/s.
+- `upperArmGyroZ` — °/s.
+
+For the forearm MPU6050, support:
+
+- `forearmGyroX` — °/s.
+- `forearmGyroY` — °/s.
+- `forearmGyroZ` — °/s.
+
+Also support accelerometer readings when available:
+
+- `upperArmAccelX`, `upperArmAccelY`, `upperArmAccelZ`.
+- `forearmAccelX`, `forearmAccelY`, `forearmAccelZ`.
+
+Use a documented axis convention and sensor coordinate system. Convert raw sensor data into the appropriate units before displaying it.
+
+### 5.2 Orientation angles
+
+Support the following estimated orientation values:
+
+- `upperArmAngle` — estimated upper-arm orientation in degrees.
+- `forearmAngle` — estimated forearm orientation in degrees.
+- `elbowAngle` — estimated relative angle between the upper arm and forearm in degrees.
+
+Document which axis or anatomical plane each angle represents. Use consistent sign conventions and angle ranges.
+
+Do not treat gyroscope angular velocity as an angle.
+
+A gyroscope measures angular velocity. Orientation estimates require integration over time and are affected by drift. Use appropriate sensor fusion, accelerometer-based correction, calibration, and filtering.
+
+For the relative elbow angle, account for the orientation and mounting alignment of both sensors. Do not assume that simply subtracting two arbitrary Euler angles always produces an accurate anatomical elbow angle.
+
+If firmware already calculates orientation or elbow angle, transmit those calculated values and display them in the app. Do not independently integrate the same gyroscope values again on the mobile device.
+
+If firmware does not calculate angles, inspect the available sensor data and implement the calculation in the most appropriate layer. Document any firmware changes required.
+
+### 5.3 Angle validity and calibration
+
+Support fields such as:
+
+- `angleValid`
+- `upperArmAngleValid`
+- `forearmAngleValid`
+- `calibrationStatus`
+- `sensorQuality`
+- `timestamp`
+
+Use only the fields supported by the actual protocol. Define and document any new fields that must be added to the firmware.
+
+Provide a calibration flow or clear calibration instructions for sensor placement and the starting position.
+
+Do not display a fabricated zero-degree value when the angle is unknown or invalid.
+
+## 6. Hardware-to-Mobile BLE Data Protocol
+
+Define a documented, versioned protocol shared by the ESP32 firmware and the mobile app.
+
+The protocol should support the following fields where applicable:
+
+### Device and message metadata
+
+- Protocol version.
+- Message type.
+- Device identifier.
+- Sequence number.
+- Timestamp or elapsed workout time.
+- Firmware version, if available.
+- Battery level, if supported.
+
+### Exercise information
+
+- Exercise type.
+- Workout state.
+- Set number.
+- Total repetition count.
+- Valid repetition count.
+- Invalid repetition count.
+- Form-feedback or warning code.
+
+### Motion information
+
+- Upper-arm accelerometer X, Y, Z.
+- Forearm accelerometer X, Y, Z.
+- Upper-arm gyroscope X, Y, Z in °/s.
+- Forearm gyroscope X, Y, Z in °/s.
+- Upper-arm orientation angle in degrees.
+- Forearm orientation angle in degrees.
+- Estimated relative elbow angle in degrees.
+- Angular velocity or peak angular velocity, if calculated.
+- Angle-validity flags.
+- Calibration state.
+
+### Physiological information
+
+- Heart rate in BPM.
+- SpO₂ in percent.
+- Measurement-validity flags.
+- Signal-quality information, if available.
+
+### Example development message
+
+Use the following only as an example schema, not as a claim that the firmware already sends these fields:
+
+```json
+{
+  "version": 1,
+  "type": "sensor_update",
+  "sequence": 120,
+  "timestamp": 1730000000,
+  "exercise": "bicep_curl",
+  "workoutState": "active",
+  "setNumber": 1,
+  "repCount": 6,
+  "validRepCount": 5,
+  "invalidRepCount": 1,
+  "upperArmGyroX": 2.4,
+  "upperArmGyroY": -1.2,
+  "upperArmGyroZ": 8.7,
+  "forearmGyroX": 4.1,
+  "forearmGyroY": 3.5,
+  "forearmGyroZ": 21.6,
+  "upperArmAngle": 24.0,
+  "forearmAngle": 68.0,
+  "elbowAngle": 44.0,
+  "angleValid": true,
+  "calibrationStatus": "complete",
+  "heartRate": 92,
+  "spo2": 97,
+  "heartRateValid": true,
+  "spo2Valid": true
+}
+```
+
+These numerical values are illustrative protocol examples, not real measurements or verified hardware output.
+
+Use JSON during development only if payload size and BLE characteristic limits permit it. Otherwise, implement a documented compact binary or delimited protocol.
+
+Handle malformed, fragmented, duplicated, delayed, stale, and out-of-order messages. Validate every incoming field before updating application state.
+
+Avoid excessive BLE traffic. Select an appropriate update frequency based on the actual firmware, BLE capabilities, and UI requirements.
+
+## 7. Extend the Existing BLE Services and Stores
+
+Update the relevant existing modules, after verifying their actual locations and definitions.
+
+### BLE service
+
+Extend the real BLE service to:
+
+- Parse sensor updates.
+- Expose typed sensor data.
+- Maintain connection status.
+- Handle notifications and disconnections.
+- Expose supported configuration commands.
+- Report protocol and device errors.
+
+### BLE service interface
+
+Define types for sensor measurements, angle estimates, device state, calibration state, and feedback events.
+
+Keep the interface consistent with the existing architecture.
+
+### Mock BLE service
+
+Provide deterministic simulated values for development and testing, including:
+
+- Upper-arm gyroscope values.
+- Forearm gyroscope values.
+- Upper-arm angle.
+- Forearm angle.
+- Relative elbow angle.
+- Heart rate and SpO₂.
+- Repetition events.
+- Calibration and sensor-validity states.
+
+Label mock data clearly as simulated. Never silently substitute simulated values when physical hardware is disconnected.
+
+### Device store
+
+Maintain the latest validated sensor measurements, device connection state, calibration state, and last-data-received time.
+
+Do not update the store with malformed or invalid values.
+
+### Workout store
+
+Track workout state and session information using the existing store design. Prevent duplicate repetition events and ensure that finishing a workout finalizes the session consistently.
+
+Avoid introducing competing sources of truth for the same measurements or repetition counts.
+
+## 8. Update the Live Workout Screen
+
+Extend `LiveWorkoutScreen.tsx` while preserving existing UI design and navigation.
+
+The screen should display the following sections.
+
+### 8.1 Device status
+
+Display:
+
+- ESP32 connection state.
+- Device name, if available.
+- Scanning or connecting state.
+- Last received data time.
+- Calibration state.
+- Sensor errors and stale-data warnings.
+
+### 8.2 Workout progress
+
+Display:
+
+- Selected exercise.
+- Current repetition count.
+- Valid and invalid repetitions, when available.
+- Current set and target sets.
+- Target repetitions.
+- Workout duration.
+- Rest timer.
+- Start, pause, resume, and finish controls.
+
+Use the existing workout flow and avoid duplicate state logic.
+
+### 8.3 Real-time gyroscope values
+
+Display upper-arm gyroscope values:
+
+- X (°/s).
+- Y (°/s).
+- Z (°/s).
+
+Display forearm gyroscope values:
+
+- X (°/s).
+- Y (°/s).
+- Z (°/s).
+
+Use readable numeric formatting and update the display at an appropriate rate.
+
+### 8.4 Real-time angle values
+
+Display:
+
+- Upper-arm angle (°).
+- Forearm angle (°).
+- Relative elbow angle (°).
+- Peak elbow flexion angle, if calculated.
+- Range of motion, if calculated reliably.
+- Calibration status.
+- Angle-validity status.
+
+Provide a simple visual angle indicator or graph showing how the elbow angle changes during the exercise if it fits the existing design.
+
+Use clear labels, units, loading states, and unavailable states. Avoid misleading values when the sensor is disconnected or the data is stale.
+
+### 8.5 Physiological monitoring
+
+Display:
+
+- Heart rate in BPM.
+- SpO₂ in percent.
+- Sensor validity or quality where available.
+- Warnings for stale or unavailable measurements.
+
+Do not present the readings as medical-grade measurements.
+
+### 8.6 Form feedback
+
+Display supported messages such as:
+
+- Correct repetition.
+- Incomplete repetition.
+- Excessive upper-arm movement.
+- Insufficient range of motion.
+- Calibration required.
+- Sensor data unavailable.
+
+Only show feedback when the firmware or a tested software algorithm supports it.
+
+## 9. Bicep Curl Recognition and Form Analysis
+
+Prefer the ESP32 as the authoritative source for repetition counts and form classifications if the firmware implements those functions.
+
+If recognition is not implemented in firmware, inspect the available motion data and implement a documented, testable algorithm in the most appropriate layer.
+
+Use elbow-angle progression, gyroscope angular velocity, and relative arm motion to support:
+
+- Curl start detection.
+- Flexion and extension tracking.
+- Repetition start and completion.
+- Peak flexion estimation.
+- Range-of-motion estimation.
+- Incomplete-repetition detection.
+- Excessive upper-arm movement detection, where validated.
+
+Use calibration and configurable thresholds. Account for individual movement patterns, sensor placement, and noise.
+
+Avoid double-counting repetitions if the ESP32 and mobile app both receive or calculate repetition events. Choose one authoritative counting source.
+
+Do not claim that a particular angle threshold or classifier is accurate without validating it against actual exercise trials.
+
+## 10. Vibration and Voice Feedback
+
+Integrate the existing feedback system with hardware and mobile functionality.
+
+### Vibration feedback
+
+If firmware supports vibration commands, define a documented command format for supported alerts. If the motor is controlled entirely by the ESP32, trigger vibration locally in firmware based on validated events.
+
+Do not assume the mobile app can control the motor without a corresponding firmware command handler.
+
+Apply event filtering, cooldowns, and suitable thresholds to avoid repeated alerts.
+
+### Voice guidance
+
+Use the phone's supported text-to-speech or audio capabilities for messages such as:
+
+- Start your set.
+- Begin the next repetition.
+- Complete the full range of motion.
+- Reduce excessive arm movement.
+- Rest between sets.
+- Workout completed.
+
+Allow users to enable or disable voice guidance using existing settings where possible.
+
+Avoid announcing every incoming sensor packet. Trigger speech only for meaningful events.
+
+## 11. Workout Configuration
+
+Extend existing workout configuration screens or flows where necessary.
+
+Support configuration of:
+
+- Exercise type.
+- Target repetitions.
+- Number of sets.
+- Rest duration.
+- Supported form-feedback options.
+- Heart-rate warning threshold.
+- Voice guidance preference.
+- Vibration feedback preference.
+
+Only transmit settings supported by the ESP32 firmware. Implement command acknowledgements or error handling when available.
+
+Make threshold configuration clear and safe. Do not automatically change workout intensity based on unreliable readings.
+
+## 12. Backend Integration
+
+Integrate with the existing Express/TypeScript backend rather than creating duplicate APIs.
+
+Inspect the existing routes, controllers, services, data models, validation, authentication, and response formats before changing them.
+
+Store supported workout information such as:
+
+- User and workout identifiers.
+- Exercise type.
+- Start and finish timestamps.
+- Repetition and set totals.
+- Valid and invalid repetition totals.
+- Heart-rate summaries.
+- SpO₂ summaries based on valid readings.
+- Peak elbow angle.
+- Minimum and maximum elbow angle.
+- Range of motion per set, if calculated reliably.
+- Average or maximum angular velocity, if useful.
+- Feedback events and timestamps.
+- Device and protocol metadata where appropriate.
+
+Use the existing API architecture and data conventions. Modify schemas and validation only when needed.
+
+Do not store every raw IMU sample in the backend unless detailed motion recording is an explicit requirement. Prefer session summaries and selected events to reduce storage, bandwidth, and privacy risks.
+
+## 13. Workout Summary, History, and Analytics
+
+Update the existing summary, history, and analytics flows to show supported new metrics.
+
+### Workout summary
+
+Where data is available, display:
+
+- Total repetitions.
+- Valid and invalid repetitions.
+- Completed sets.
+- Workout duration.
+- Average and maximum heart rate.
+- SpO₂ summary based on valid samples.
+- Peak elbow flexion.
+- Range of motion.
+- Relevant form-feedback events.
+
+### Workout history
+
+Allow users to review saved workout summaries and supported angle or motion metrics.
+
+### Analytics
+
+Add useful progress visualizations, where justified, such as:
+
+- Repetitions across sessions.
+- Valid repetition percentage.
+- Range-of-motion trends.
+- Peak elbow-angle trends.
+- Heart-rate trends.
+
+Handle missing historical data gracefully so older workouts remain compatible with new fields.
+
+Do not invent or backfill measurements that were never collected.
+
+## 14. Offline Support and Synchronization
+
+Reuse the existing offline queue and synchronization architecture.
+
+Ensure that:
+
+- Completed workouts can be saved locally when the network is unavailable, if the current app supports this.
+- Queued workouts synchronize when connectivity returns.
+- Retries do not create duplicate workout records.
+- Sensor data and workout summaries are validated before submission.
+- Synchronization failures are visible and recoverable.
+- Local workout state remains consistent with backend state.
+
+Do not queue every high-frequency IMU sample unless explicitly required.
+
+## 15. Device Connection and User Experience
+
+Update the existing connection, home, and profile screens as appropriate.
+
+Clearly represent:
+
+- Disconnected.
+- Scanning.
+- Connecting.
+- Connected and receiving data.
+- Connected but data is stale.
+- Reconnecting.
+- Calibration required.
+- Device error.
+
+Provide useful guidance for permissions, sensor placement, calibration, and troubleshooting.
+
+Preserve existing authentication, profile, workout history, analytics, offline features, and notifications.
+
+Where the existing app supports manual or offline use, keep that functionality available when the band is disconnected.
+
+## 16. Reliability, Data Validation, and Safety
+
+Implement robust validation for all incoming hardware data.
+
+- Validate numeric types and reasonable bounds.
+- Validate timestamps and sequence numbers.
+- Distinguish invalid, missing, and stale measurements.
+- Prevent stale values from appearing as current readings.
+- Handle BLE disconnects and reconnections.
+- Prevent duplicate workout events.
+- Avoid application crashes from malformed data.
+- Use explicit error states and useful logs.
+
+Treat heart-rate and SpO₂ values as estimates rather than medical-grade measurements. Do not diagnose medical conditions.
+
+Do not present exercise-form classifications as definitive when the algorithm is unvalidated.
+
+Protect authentication tokens and user data. Avoid logging sensitive information unnecessarily.
+
+## 17. Testing Requirements
+
+Add or update tests for the following.
+
+### BLE and protocol
+
+- BLE message parsing.
+- Protocol-version handling.
+- Missing fields.
+- Invalid numeric values.
+- Invalid angle values.
+- Gyroscope unit conversion.
+- Malformed and fragmented messages.
+- Duplicate and out-of-order messages.
+- Connection loss and reconnection.
+- Stale sensor-data handling.
+
+### Gyroscope and angle calculations
+
+- Correct axis mapping.
+- Sensor coordinate conventions.
+- Calibration behavior.
+- Orientation estimation.
+- Relative elbow-angle calculation.
+- Angle validity and unavailable states.
+- Gyroscope drift and sensor-fusion behavior.
+- Consistency of angle updates in the UI.
+
+### Workout behavior
+
+- Start, pause, resume, and finish.
+- Repetition counting.
+- Duplicate repetition prevention.
+- Set and rest tracking.
+- Workout summary calculations.
+- Form-feedback event handling.
+- Mock sensor-data behavior.
+
+### Backend and offline behavior
+
+- Authentication and API failures.
+- Workout submission and validation.
+- Offline queuing.
+- Retry behavior.
+- Duplicate-submission prevention.
+- Historical compatibility when new fields are missing.
+
+Use mocks for predictable development and automated testing. Mark all simulated data as simulated.
+
+If physical hardware is unavailable, complete the software-side implementation using mocks and explicitly report that physical hardware integration remains unverified.
+
+## 18. Required Deliverables
+
+After implementation, provide:
+
+1. Summary of the integration architecture.
+2. List of modified and created files.
+3. Description of the data flow from both MPU6050 sensors and MAX30102 through ESP32, BLE, mobile stores, UI, and backend.
+4. BLE service and characteristic UUIDs actually configured or the specific values still required from the firmware.
+5. Complete protocol documentation and example messages.
+6. Explanation of gyroscope units and angle-calculation methodology.
+7. Sensor-axis conventions and calibration procedure.
+8. Any required ESP32 firmware modifications.
+9. Required Expo/native build configuration and permissions.
+10. Instructions for running the mobile app and backend.
+11. Test commands executed and their actual results.
+12. Known limitations and remaining physical hardware tests.
+
+## 19. Implementation Rules
+
+- Preserve the existing RepSense architecture and UI.
+- Do not replace the project with a new starter application.
+- Do not remove existing authentication, history, analytics, offline support, or notifications.
+- Do not invent API endpoints, BLE UUIDs, sensor readings, or test results.
+- Keep the real BLE service and mock service consistent.
+- Avoid unrelated refactoring.
+- Do not introduce duplicate sources of truth for angle calculations or repetition counting.
+- Do not claim the integration is fully tested until the actual ESP32 hardware has been tested.
+- Clearly separate completed functionality, simulated functionality, and pending hardware work.
+
+## Final Instruction
+
+Start by inspecting the existing repository and tracing the current BLE data flow into the live workout screen. Produce a concise implementation plan, then implement the integration incrementally.
+
+Prioritize getting real ESP32 BLE data into the app, displaying both MPU6050 gyroscope angular velocities and estimated upper-arm, forearm, and relative elbow angles, displaying valid MAX30102 readings, and preserving the existing workout workflow.
+
+After each major change, run the relevant tests and report the actual results. Finish with a clear summary of modified files, firmware requirements, build steps, test results, and remaining hardware validation.
